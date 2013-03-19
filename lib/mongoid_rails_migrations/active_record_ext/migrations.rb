@@ -188,38 +188,40 @@ module Mongoid #:nodoc
 
   class Migrator#:nodoc:
     class << self
-      attr_writer :migrations_path
-
-      def migrate(migrations_path, target_version = nil)
+      def migrate(target_version = nil)
         case
-          when target_version.nil?              then up(migrations_path, target_version)
-          when current_version > target_version then down(migrations_path, target_version)
-          else                                       up(migrations_path, target_version)
+          when target_version.nil?              then up(target_version)
+          when current_version > target_version then down(target_version)
+          else                                       up(target_version)
         end
       end
 
-      def rollback(migrations_path, steps=1)
-        move(:down, migrations_path, steps)
+      def rollback(steps=1)
+        move(:down, steps)
       end
 
-      def forward(migrations_path, steps=1)
-        move(:up, migrations_path, steps)
+      def forward(steps=1)
+        move(:up, steps)
       end
 
-      def up(migrations_path, target_version = nil)
-        self.new(:up, migrations_path, target_version).migrate
+      def up(target_version = nil)
+        self.new(:up, target_version).migrate
       end
 
-      def down(migrations_path, target_version = nil)
-        self.new(:down, migrations_path, target_version).migrate
+      def down(target_version = nil)
+        self.new(:down, target_version).migrate
       end
 
-      def run(direction, migrations_path, target_version)
-        self.new(direction, migrations_path, target_version).run
+      def run(direction, target_version)
+        self.new(direction, target_version).run
       end
 
       def migrations_path
-        @migrations_path ||= ['db/migrate']
+        @migrations_path ||= 'db/migrate'
+      end
+
+      def migrations_path=(value)
+        @migrations_path = value
       end
 
       # def schema_migrations_table_name
@@ -251,22 +253,22 @@ module Mongoid #:nodoc
 
       private
 
-      def move(direction, migrations_path, steps)
-        migrator = self.new(direction, migrations_path)
+      def move(direction, steps)
+        migrator = self.new(direction)
         start_index = migrator.migrations.index(migrator.current_migration)
 
         if start_index
           finish = migrator.migrations[start_index + steps]
           version = finish ? finish.version : 0
-          send(direction, migrations_path, version)
+          send(direction, version)
         end
       end
     end
 
-    def initialize(direction, migrations_path, target_version = nil)
+    def initialize(direction, target_version = nil)
       # raise StandardError.new("This database does not yet support migrations") unless Base.connection.supports_migrations?
       # Base.connection.initialize_schema_migrations_table
-      @direction, @migrations_path, @target_version = direction, migrations_path, target_version
+      @direction, @target_version = direction, target_version
     end
 
     def current_version
@@ -333,9 +335,10 @@ module Mongoid #:nodoc
 
     def migrations
       @migrations ||= begin
-        files = Array(@migrations_path).inject([]) do |files, path|
-          files += Dir["#{path}/[0-9]*_*.rb"]
+        file_patterns = [* self.class.migrations_path].collect do |path|
+          "#{path}/[0-9]*_*.rb"
         end
+        files = Dir[* file_patterns]
 
         migrations = files.inject([]) do |klasses, file|
           version, name = file.scan(/([0-9]+)_([_a-z0-9]*).rb/).first
